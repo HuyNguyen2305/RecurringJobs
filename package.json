@@ -1,0 +1,49 @@
+{
+  "name": "recurring-jobs-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "imports": {
+    "#common/*": "./src/common/*",
+    "#configs/*": "./src/common/*",
+    "#constants/*": "./src/common/constants/*",
+    "#controllers/*": "./src/controllers/*",
+    "#models/*": "./src/models/*",
+    "#repositories/*": "./src/repositories/*",
+    "#routers/*": "./src/routers/*",
+    "#schemas/*": "./src/schemas/*",
+    "#service/*": "./src/services/*"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "migrate": "sequelize-cli db:migrate --config config/config.cjs --migrations-path migrations --models-path src/models",
+    "migrate:undo": "sequelize-cli db:migrate:undo --config config/config.cjs --migrations-path migrations --models-path src/models",
+    "migrate:test": "cross-env NODE_ENV=test sequelize-cli db:migrate --config config/config.cjs --migrations-path migrations --models-path src/models",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js test/unit",
+    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js test/integration",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@fastify/autoload": "^6.0.3",
+    "awilix": "^12.0.4",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.1.0",
+    "pg": "^8.13.1",
+    "sequelize": "^6.37.5",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "cross-env": "^7.0.3",
+    "eslint": "^9.15.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.3.3",
+    "sequelize-cli": "^6.6.2"
+  }
+}
