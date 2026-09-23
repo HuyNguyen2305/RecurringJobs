@@ -48,6 +48,13 @@ export class JobService {
     if (frequency === 'weekly' && (!weeklyDaysOfWeek || weeklyDaysOfWeek.length === 0)) {
       throw new ValidationError('Weekly recurrence requires at least one day of the week');
     }
+    if (
+      frequency === 'weekly' &&
+      weeklyDaysOfWeek &&
+      new Set(weeklyDaysOfWeek).size !== weeklyDaysOfWeek.length
+    ) {
+      throw new ValidationError('weeklyDaysOfWeek cannot contain duplicate days');
+    }
     if (frequency === 'weekly' && !weeklyPeriod) {
       throw new ValidationError('Weekly recurrence requires a period');
     }
@@ -117,6 +124,11 @@ export class JobService {
       throw new ValidationError('Only one assignee can be marked as primary');
     }
 
+    const technicianIds = assignees.map((assignee) => assignee.technicianId);
+    if (new Set(technicianIds).size !== technicianIds.length) {
+      throw new ValidationError('A technician cannot be assigned to the same job twice');
+    }
+
     if (recurrence) {
       this.validateRecurrence(recurrence, jobData.date);
       if (recurrence.exceptType === 'frequency') {
@@ -159,17 +171,30 @@ export class JobService {
 
   async getOccurrences(id, { from, to, limit } = {}) {
     const job = await this.getById(id);
+    return this.resolveOccurrences(job, { from, to, limit }, new Set());
+  }
 
+  /**
+   * Resolves a job's occurrences, recursing through Except->Frequency chains so a
+   * referenced job's own exceptions are applied too. `visited` guards against a
+   * circular chain (A excepts B, B excepts A) recursing forever.
+   */
+  async resolveOccurrences(job, { from, to, limit }, visited) {
     if (!job.recurrence) {
       return [job.date];
     }
 
+    visited.add(job.id);
+
     let excludeDates;
     if (job.recurrence.exceptType === 'frequency') {
-      const exceptJob = await this.getById(job.recurrence.exceptJobId);
-      excludeDates = exceptJob.recurrence
-        ? generateOccurrences(exceptJob.recurrence, exceptJob.date, { from, to, limit })
-        : [exceptJob.date];
+      excludeDates = visited.has(job.recurrence.exceptJobId)
+        ? []
+        : await this.resolveOccurrences(
+            await this.getById(job.recurrence.exceptJobId),
+            { from, to, limit },
+            visited,
+          );
     }
 
     return generateOccurrences(job.recurrence, job.date, { from, to, limit, excludeDates });

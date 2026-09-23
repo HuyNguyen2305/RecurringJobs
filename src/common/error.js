@@ -18,3 +18,9 @@ export class ValidationError extends CustomError {
     super(message, 400, details);
   }
 }
+
+export class ConflictError extends CustomError {
+  constructor(message = 'Conflict', details) {
+    super(message, 409, details);
+  }
+}

@@ -102,6 +102,35 @@ describe('JobService#create', () => {
     ).rejects.toThrow(ValidationError);
   });
 
+  it('throws ValidationError when the same technician is assigned twice', async () => {
+    const service = buildService();
+
+    await expect(
+      service.create({
+        ...baseJobData,
+        assignees: [
+          { technicianId: 'technician-1', isPrimary: true },
+          { technicianId: 'technician-1', isPrimary: false },
+        ],
+      }),
+    ).rejects.toThrow(ValidationError);
+  });
+
+  it('throws ValidationError when weeklyDaysOfWeek has duplicates', async () => {
+    const service = buildService();
+
+    await expect(
+      service.create({
+        ...baseJobData,
+        recurrence: {
+          frequency: 'weekly',
+          weeklyPeriod: 'every',
+          weeklyDaysOfWeek: [1, 1],
+        },
+      }),
+    ).rejects.toThrow(ValidationError);
+  });
+
   it('embeds the recurrence object directly on the job', async () => {
     const service = buildService();
 
@@ -283,6 +312,77 @@ describe('JobService#getOccurrences', () => {
       '2026-10-03',
       '2026-10-04',
     ]);
+  });
+
+  it('composes a nested Except->Frequency chain (C excepts B, B excepts A)', async () => {
+    const jobs = {
+      'job-a': {
+        id: 'job-a',
+        date: '2026-10-01',
+        recurrence: { frequency: 'daily', interval: 1, endsType: 'never' },
+      },
+      'job-b': {
+        id: 'job-b',
+        date: '2026-10-01',
+        recurrence: {
+          frequency: 'daily',
+          interval: 1,
+          endsType: 'never',
+          exceptType: 'frequency',
+          exceptJobId: 'job-a',
+        },
+      },
+      'job-c': {
+        id: 'job-c',
+        date: '2026-10-01',
+        recurrence: {
+          frequency: 'daily',
+          interval: 1,
+          endsType: 'never',
+          exceptType: 'frequency',
+          exceptJobId: 'job-b',
+        },
+      },
+    };
+    const service = buildService({
+      jobRepository: { findById: jest.fn(async (id) => jobs[id]) },
+    });
+
+    // A's 1st date (10-01) is excluded from B, so B's 1st visible date is 10-02;
+    // B's 1st visible date (10-02) is excluded from C, so C's 1st visible date is 10-01.
+    await expect(service.getOccurrences('job-c', { limit: 1 })).resolves.toEqual(['2026-10-01']);
+  });
+
+  it('does not infinite-loop on a circular Except->Frequency reference', async () => {
+    const jobs = {
+      'job-x': {
+        id: 'job-x',
+        date: '2026-10-01',
+        recurrence: {
+          frequency: 'daily',
+          interval: 1,
+          endsType: 'never',
+          exceptType: 'frequency',
+          exceptJobId: 'job-y',
+        },
+      },
+      'job-y': {
+        id: 'job-y',
+        date: '2026-10-01',
+        recurrence: {
+          frequency: 'daily',
+          interval: 1,
+          endsType: 'never',
+          exceptType: 'frequency',
+          exceptJobId: 'job-x',
+        },
+      },
+    };
+    const service = buildService({
+      jobRepository: { findById: jest.fn(async (id) => jobs[id]) },
+    });
+
+    await expect(service.getOccurrences('job-x', { limit: 1 })).resolves.toEqual(['2026-10-02']);
   });
 });
 

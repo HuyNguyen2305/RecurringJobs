@@ -13,7 +13,6 @@ module.exports = {
   development: base,
   test: {
     ...base,
-    database: process.env.DB_NAME_TEST || `${base.database}_test`,
     logging: false,
   },
   production: base,

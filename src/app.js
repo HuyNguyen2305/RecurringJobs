@@ -39,6 +39,22 @@ export async function buildApp() {
       return;
     }
 
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      reply.code(409).send({
+        success: false,
+        message: 'A record with those values already exists',
+      });
+      return;
+    }
+
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      reply.code(400).send({
+        success: false,
+        message: 'Referenced record does not exist',
+      });
+      return;
+    }
+
     request.log.error(error);
     reply.code(500).send({
       success: false,
