@@ -35,6 +35,31 @@ function buildService(overrides = {}) {
 }
 
 describe('InvoiceService#generate', () => {
+  // Pins "today" so the 14-days-ahead rule is deterministic: the limit is 2026-10-09.
+  beforeEach(() => {
+    jest.useFakeTimers({ now: new Date('2026-09-25T12:00:00Z') });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function oneOffJobOn(date, extra = {}) {
+    return {
+      jobRepository: {
+        findById: jest.fn(async () => ({
+          id: 'job-1',
+          date,
+          recurrence: null,
+          customer: {},
+          location: {},
+          serviceType: {},
+          ...extra,
+        })),
+      },
+    };
+  }
+
   it('throws NotFoundError when the job does not exist', async () => {
     const service = buildService({
       jobRepository: { findById: jest.fn(async () => null) },
@@ -134,6 +159,57 @@ describe('InvoiceService#generate', () => {
     await expect(
       service.generate('job-1', { occurrenceDate: '2026-10-01', amount: 100 }),
     ).rejects.toThrow(ConflictError);
+  });
+
+  it('throws ValidationError for a canceled job and creates nothing', async () => {
+    const service = buildService(oneOffJobOn('2026-10-01', { status: 'canceled' }));
+
+    await expect(
+      service.generate('job-1', { occurrenceDate: '2026-10-01', amount: 100 }),
+    ).rejects.toThrow(ValidationError);
+    expect(service.invoiceRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('throws ValidationError when occurrenceDate is more than 14 days ahead', async () => {
+    const service = buildService(oneOffJobOn('2026-10-10'));
+
+    await expect(
+      service.generate('job-1', { occurrenceDate: '2026-10-10', amount: 100 }),
+    ).rejects.toThrow(ValidationError);
+    expect(service.invoiceRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts an occurrenceDate exactly 14 days ahead', async () => {
+    const service = buildService(oneOffJobOn('2026-10-09'));
+
+    await expect(
+      service.generate('job-1', { occurrenceDate: '2026-10-09', amount: 100 }),
+    ).resolves.toMatchObject({ occurrenceDate: '2026-10-09' });
+  });
+
+  it('accepts a past occurrenceDate', async () => {
+    const service = buildService(oneOffJobOn('2026-09-01'));
+
+    await expect(
+      service.generate('job-1', { occurrenceDate: '2026-09-01', amount: 100 }),
+    ).resolves.toMatchObject({ occurrenceDate: '2026-09-01' });
+  });
+
+  it('throws ValidationError when amount has more than 2 decimal places', async () => {
+    const service = buildService();
+
+    await expect(
+      service.generate('job-1', { occurrenceDate: '2026-10-01', amount: 12.345 }),
+    ).rejects.toThrow(ValidationError);
+    expect(service.invoiceRepository.create).not.toHaveBeenCalled();
+  });
+
+  it.each([12.34, 1.1, 0.29])('accepts amount %p despite float rounding', async (amount) => {
+    const service = buildService();
+
+    await expect(
+      service.generate('job-1', { occurrenceDate: '2026-10-01', amount }),
+    ).resolves.toMatchObject({ amount });
   });
 });
 

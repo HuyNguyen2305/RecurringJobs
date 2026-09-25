@@ -1,3 +1,5 @@
+import { MAX_STRING_LENGTH, NON_BLANK_PATTERN } from '#constants/validation.js';
+
 const customerResponse = {
   type: 'object',
   properties: {
@@ -14,10 +16,16 @@ export const createCustomerSchema = {
   body: {
     type: 'object',
     required: ['name'],
+    additionalProperties: false,
     properties: {
-      name: { type: 'string', minLength: 1 },
-      email: { type: 'string', format: 'email' },
-      phone: { type: 'string' },
+      name: {
+        type: 'string',
+        minLength: 1,
+        maxLength: MAX_STRING_LENGTH,
+        pattern: NON_BLANK_PATTERN,
+      },
+      email: { type: 'string', format: 'email', maxLength: MAX_STRING_LENGTH },
+      phone: { type: 'string', maxLength: MAX_STRING_LENGTH },
     },
   },
   response: {

@@ -233,4 +233,12 @@ describe('generateOccurrences', () => {
       expect(dates).toEqual(['2026-09-29', '2026-09-30']);
     });
   });
+
+  describe('guards', () => {
+    it('stops at the first date past the JS Date range instead of emitting NaN dates', () => {
+      const rule = { frequency: 'daily', interval: 1e9, endsType: 'never' };
+      const dates = generateOccurrences(rule, ANCHOR, { limit: 3 });
+      expect(dates).toEqual([ANCHOR]);
+    });
+  });
 });

@@ -1,3 +1,5 @@
+import { MAX_STRING_LENGTH, NON_BLANK_PATTERN } from '#constants/validation.js';
+
 const locationResponse = {
   type: 'object',
   properties: {
@@ -16,12 +18,18 @@ export const createLocationSchema = {
   body: {
     type: 'object',
     required: ['customerId', 'addressLine1'],
+    additionalProperties: false,
     properties: {
       customerId: { type: 'string', format: 'uuid' },
-      addressLine1: { type: 'string', minLength: 1 },
-      city: { type: 'string' },
-      state: { type: 'string' },
-      zip: { type: 'string' },
+      addressLine1: {
+        type: 'string',
+        minLength: 1,
+        maxLength: MAX_STRING_LENGTH,
+        pattern: NON_BLANK_PATTERN,
+      },
+      city: { type: 'string', maxLength: MAX_STRING_LENGTH },
+      state: { type: 'string', maxLength: MAX_STRING_LENGTH },
+      zip: { type: 'string', maxLength: MAX_STRING_LENGTH },
     },
   },
   response: {

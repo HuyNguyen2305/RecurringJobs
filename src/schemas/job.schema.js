@@ -1,3 +1,5 @@
+import { MAX_LENGTH_MINUTES, MAX_RECURRENCE_INTERVAL } from '#constants/validation.js';
+
 const JOB_STATUSES = ['unconfirmed', 'confirmed', 'in_progress', 'completed', 'canceled'];
 const RECURRENCE_FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const WEEKLY_PERIODS = ['first_third', 'second_fourth', 'every'];
@@ -13,9 +15,10 @@ const timePattern = '^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?$';
 const recurrenceSchema = {
   type: 'object',
   required: ['frequency'],
+  additionalProperties: false,
   properties: {
     frequency: { type: 'string', enum: RECURRENCE_FREQUENCIES },
-    interval: { type: 'integer', minimum: 1 },
+    interval: { type: 'integer', minimum: 1, maximum: MAX_RECURRENCE_INTERVAL },
     weeklyPeriod: { type: 'string', enum: WEEKLY_PERIODS },
     weeklyDaysOfWeek: {
       type: 'array',
@@ -24,7 +27,12 @@ const recurrenceSchema = {
     monthlyRepeatBy: { type: 'string', enum: MONTHLY_REPEAT_BY },
     yearlyRepeatBy: { type: 'string', enum: YEARLY_REPEAT_BY },
     endsType: { type: 'string', enum: RECURRENCE_ENDS_TYPES },
-    endsAfterCount: { type: 'integer', minimum: 1 },
+    endsAfterCount: {
+      type: 'integer',
+      minimum: 1,
+      description:
+        'Number of scheduled dates, counted before except rules are applied: an excepted date still uses up a slot (RFC 5545).',
+    },
     endsOnDate: { type: 'string', format: 'date' },
     exceptType: { type: 'string', enum: EXCEPT_TYPES },
     exceptMonths: {
@@ -42,13 +50,14 @@ export const createJobSchema = {
   body: {
     type: 'object',
     required: ['customerId', 'locationId', 'serviceTypeId', 'date', 'startTime', 'lengthMinutes'],
+    additionalProperties: false,
     properties: {
       customerId: { type: 'string', format: 'uuid' },
       locationId: { type: 'string', format: 'uuid' },
       serviceTypeId: { type: 'string', format: 'uuid' },
       date: { type: 'string', format: 'date' },
       startTime: { type: 'string', pattern: timePattern },
-      lengthMinutes: { type: 'integer', minimum: 0 },
+      lengthMinutes: { type: 'integer', minimum: 1, maximum: MAX_LENGTH_MINUTES },
       timeWindowStart: { type: 'string', pattern: timePattern },
       timeWindowEnd: { type: 'string', pattern: timePattern },
       soldByTechnicianId: { type: 'string', format: 'uuid' },
@@ -62,6 +71,7 @@ export const createJobSchema = {
         items: {
           type: 'object',
           required: ['technicianId'],
+          additionalProperties: false,
           properties: {
             technicianId: { type: 'string', format: 'uuid' },
             isPrimary: { type: 'boolean' },

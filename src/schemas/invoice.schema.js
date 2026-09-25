@@ -1,3 +1,5 @@
+import { MAX_INVOICE_AMOUNT } from '#constants/validation.js';
+
 const invoiceResponse = {
   type: 'object',
   properties: {
@@ -23,9 +25,10 @@ export const createInvoiceSchema = {
   body: {
     type: 'object',
     required: ['occurrenceDate', 'amount'],
+    additionalProperties: false,
     properties: {
       occurrenceDate: { type: 'string', format: 'date' },
-      amount: { type: 'number', minimum: 0 },
+      amount: { type: 'number', minimum: 0, maximum: MAX_INVOICE_AMOUNT },
     },
   },
   response: {

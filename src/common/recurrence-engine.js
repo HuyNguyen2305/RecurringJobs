@@ -202,6 +202,8 @@ export function generateOccurrences(rule, anchorDateStr, { from, to, limit, excl
   let iterations = 0;
 
   for (const d of iterator) {
+    if (Number.isNaN(d.getTime())) break;
+
     iterations += 1;
     if (iterations > MAX_ITERATIONS) break;
 

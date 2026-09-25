@@ -2,6 +2,14 @@ import { NotFoundError, ValidationError } from '#common/error.js';
 import { sequelize } from '#common/database.js';
 import { generateOccurrences } from '#common/recurrence-engine.js';
 
+// Upper bound on candidate dates scanned when backfilling a `limit` past Except->Frequency exclusions.
+const MAX_EXCEPT_CANDIDATES = 5000;
+
+// Normalizes 'HH:MM' to 'HH:MM:SS' so time strings compare correctly as text.
+function toFullTime(time) {
+  return time.length === 5 ? `${time}:00` : time;
+}
+
 export class JobService {
   constructor({
     jobRepository,
@@ -112,6 +120,14 @@ export class JobService {
       throw new ValidationError('Location does not belong to the given customer');
     }
 
+    if (
+      jobData.timeWindowStart &&
+      jobData.timeWindowEnd &&
+      toFullTime(jobData.timeWindowStart) >= toFullTime(jobData.timeWindowEnd)
+    ) {
+      throw new ValidationError('timeWindowStart must be before timeWindowEnd');
+    }
+
     if (jobData.soldByTechnicianId) {
       await this.assertExists(this.technicianRepository, jobData.soldByTechnicianId, 'Technician');
     }
@@ -176,28 +192,53 @@ export class JobService {
 
   /**
    * Resolves a job's occurrences, recursing through Except->Frequency chains so a
-   * referenced job's own exceptions are applied too. `visited` guards against a
-   * circular chain (A excepts B, B excepts A) recursing forever.
+   * referenced job's own exceptions are applied too. `visited` holds the ancestors on
+   * the current path and guards against a circular chain (A excepts B, B excepts A).
    */
   async resolveOccurrences(job, { from, to, limit }, visited) {
     if (!job.recurrence) {
-      return [job.date];
+      const inWindow = (!from || job.date >= from) && (!to || job.date <= to);
+      return inWindow ? [job.date] : [];
     }
 
-    visited.add(job.id);
-
-    let excludeDates;
-    if (job.recurrence.exceptType === 'frequency') {
-      excludeDates = visited.has(job.recurrence.exceptJobId)
-        ? []
-        : await this.resolveOccurrences(
-            await this.getById(job.recurrence.exceptJobId),
-            { from, to, limit },
-            visited,
-          );
+    const { exceptType, exceptJobId } = job.recurrence;
+    if (exceptType !== 'frequency' || visited.has(exceptJobId)) {
+      return generateOccurrences(job.recurrence, job.date, { from, to, limit });
     }
 
-    return generateOccurrences(job.recurrence, job.date, { from, to, limit, excludeDates });
+    const path = new Set(visited).add(job.id);
+    const exceptJob = await this.getById(exceptJobId);
+    let rawLimit = limit;
+
+    while (true) {
+      // Without excludeDates the engine skips frequency exclusions, so these are the
+      // candidates after month/condition exceptions and endsType are applied.
+      const candidates = generateOccurrences(job.recurrence, job.date, {
+        from,
+        to,
+        limit: rawLimit,
+      });
+      if (candidates.length === 0) {
+        return [];
+      }
+
+      // The referenced job is resolved over the candidates' own window, never the
+      // caller's limit, so its skip-list covers every candidate and is always bounded.
+      const excluded = new Set(
+        await this.resolveOccurrences(
+          exceptJob,
+          { from: candidates[0], to: candidates.at(-1), limit: Infinity },
+          path,
+        ),
+      );
+      const dates = candidates.filter((date) => !excluded.has(date));
+
+      const exhausted = limit == null || candidates.length < rawLimit;
+      if (exhausted || dates.length >= limit || rawLimit >= MAX_EXCEPT_CANDIDATES) {
+        return limit == null ? dates : dates.slice(0, limit);
+      }
+      rawLimit = Math.min(rawLimit * 2, MAX_EXCEPT_CANDIDATES);
+    }
   }
 
   async list({ page = 1, pageSize = 20 } = {}) {

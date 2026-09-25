@@ -116,6 +116,22 @@ describe('JobService#create', () => {
     ).rejects.toThrow(ValidationError);
   });
 
+  it('throws ValidationError when timeWindowStart is after timeWindowEnd', async () => {
+    const service = buildService();
+
+    await expect(
+      service.create({ ...baseJobData, timeWindowStart: '17:00', timeWindowEnd: '08:00' }),
+    ).rejects.toThrow(ValidationError);
+  });
+
+  it('throws ValidationError when timeWindowStart equals timeWindowEnd in mixed formats', async () => {
+    const service = buildService();
+
+    await expect(
+      service.create({ ...baseJobData, timeWindowStart: '08:00', timeWindowEnd: '08:00:00' }),
+    ).rejects.toThrow(ValidationError);
+  });
+
   it('throws ValidationError when weeklyDaysOfWeek has duplicates', async () => {
     const service = buildService();
 
@@ -382,7 +398,118 @@ describe('JobService#getOccurrences', () => {
       jobRepository: { findById: jest.fn(async (id) => jobs[id]) },
     });
 
-    await expect(service.getOccurrences('job-x', { limit: 1 })).resolves.toEqual(['2026-10-02']);
+    // Y's back-reference to X is cut by the cycle guard, so Y is every day and X excludes
+    // all of it; the backfill loop must still terminate.
+    await expect(service.getOccurrences('job-x', { limit: 1 })).resolves.toEqual([]);
+  });
+
+  it('returns no dates for a one-off job outside the from/to window', async () => {
+    const service = buildService({
+      jobRepository: {
+        findById: jest.fn(async () => ({ id: 'job-1', date: '2026-10-01', recurrence: null })),
+      },
+    });
+
+    await expect(
+      service.getOccurrences('job-1', { from: '2026-11-01', to: '2026-11-30' }),
+    ).resolves.toEqual([]);
+  });
+
+  it('applies the except job over the whole range even when only a limit is given', async () => {
+    const jobs = {
+      'job-a': {
+        id: 'job-a',
+        date: '2026-10-01',
+        recurrence: {
+          frequency: 'weekly',
+          interval: 1,
+          weeklyPeriod: 'every',
+          weeklyDaysOfWeek: [1],
+          endsType: 'never',
+          exceptType: 'frequency',
+          exceptJobId: 'job-b',
+        },
+      },
+      'job-b': {
+        id: 'job-b',
+        date: '2026-10-01',
+        recurrence: { frequency: 'daily', interval: 1, endsType: 'never' },
+      },
+    };
+    const service = buildService({
+      jobRepository: { findById: jest.fn(async (id) => jobs[id]) },
+    });
+
+    await expect(service.getOccurrences('job-a', { limit: 3 })).resolves.toEqual([]);
+  });
+
+  it('resolves a bounded job that excepts a never-ending job without a to or limit', async () => {
+    const jobs = {
+      'job-a': {
+        id: 'job-a',
+        date: '2026-10-01',
+        recurrence: {
+          frequency: 'daily',
+          interval: 1,
+          endsType: 'on_date',
+          endsOnDate: '2026-10-05',
+          exceptType: 'frequency',
+          exceptJobId: 'job-b',
+        },
+      },
+      'job-b': {
+        id: 'job-b',
+        date: '2026-10-03',
+        recurrence: {
+          frequency: 'weekly',
+          interval: 1,
+          weeklyPeriod: 'every',
+          weeklyDaysOfWeek: [6],
+          endsType: 'never',
+        },
+      },
+    };
+    const service = buildService({
+      jobRepository: { findById: jest.fn(async (id) => jobs[id]) },
+    });
+
+    // 2026-10-03 is a Saturday, B's first date
+    await expect(service.getOccurrences('job-a')).resolves.toEqual([
+      '2026-10-01',
+      '2026-10-02',
+      '2026-10-04',
+      '2026-10-05',
+    ]);
+  });
+
+  it('backfills the limit past dates removed by the except job', async () => {
+    const jobs = {
+      'job-a': {
+        id: 'job-a',
+        date: '2026-10-01',
+        recurrence: {
+          frequency: 'daily',
+          interval: 1,
+          endsType: 'never',
+          exceptType: 'frequency',
+          exceptJobId: 'job-b',
+        },
+      },
+      'job-b': {
+        id: 'job-b',
+        date: '2026-10-01',
+        recurrence: { frequency: 'daily', interval: 1, endsType: 'after', endsAfterCount: 3 },
+      },
+    };
+    const service = buildService({
+      jobRepository: { findById: jest.fn(async (id) => jobs[id]) },
+    });
+
+    await expect(service.getOccurrences('job-a', { limit: 3 })).resolves.toEqual([
+      '2026-10-04',
+      '2026-10-05',
+      '2026-10-06',
+    ]);
   });
 });
 

@@ -1,3 +1,5 @@
+import { MAX_STRING_LENGTH, NON_BLANK_PATTERN } from '#constants/validation.js';
+
 const serviceTypeResponse = {
   type: 'object',
   properties: {
@@ -13,8 +15,14 @@ export const createServiceTypeSchema = {
   body: {
     type: 'object',
     required: ['name'],
+    additionalProperties: false,
     properties: {
-      name: { type: 'string', minLength: 1 },
+      name: {
+        type: 'string',
+        minLength: 1,
+        maxLength: MAX_STRING_LENGTH,
+        pattern: NON_BLANK_PATTERN,
+      },
       description: { type: 'string' },
     },
   },

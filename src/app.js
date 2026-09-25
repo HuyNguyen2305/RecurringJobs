@@ -39,6 +39,14 @@ export async function buildApp() {
       return;
     }
 
+    if (error.statusCode >= 400 && error.statusCode < 500) {
+      reply.code(error.statusCode).send({
+        success: false,
+        message: error.message,
+      });
+      return;
+    }
+
     if (error.name === 'SequelizeUniqueConstraintError') {
       reply.code(409).send({
         success: false,

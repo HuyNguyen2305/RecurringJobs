@@ -1,3 +1,5 @@
+import { MAX_STRING_LENGTH, NON_BLANK_PATTERN } from '#constants/validation.js';
+
 const technicianResponse = {
   type: 'object',
   properties: {
@@ -13,9 +15,15 @@ export const createTechnicianSchema = {
   body: {
     type: 'object',
     required: ['name'],
+    additionalProperties: false,
     properties: {
-      name: { type: 'string', minLength: 1 },
-      email: { type: 'string', format: 'email' },
+      name: {
+        type: 'string',
+        minLength: 1,
+        maxLength: MAX_STRING_LENGTH,
+        pattern: NON_BLANK_PATTERN,
+      },
+      email: { type: 'string', format: 'email', maxLength: MAX_STRING_LENGTH },
     },
   },
   response: {
