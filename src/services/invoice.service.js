@@ -1,21 +1,16 @@
 import { NotFoundError, ValidationError, ConflictError } from '#common/error.js';
+import { sequelize } from '#common/database.js';
 import { INVOICE_MAX_DAYS_AHEAD } from '#constants/validation.js';
+import { addDaysUtc } from '#common/dates.js';
+import { validateLineItems, toLineItemRows, summarizeLineItems } from '#common/line-items.js';
+import { buildJobSnapshot } from '#common/job-snapshot.js';
 
-const MS_PER_DAY = 86400000;
-
-// Today (UTC) plus `days`, as YYYY-MM-DD - the same UTC date convention as the recurrence engine.
-function addDaysUtc(days) {
-  return new Date(Date.now() + days * MS_PER_DAY).toISOString().slice(0, 10);
-}
-
-// Float-safe: 1.1 * 100 is 110.00000000000001, which must still count as 2 decimals.
-function hasAtMostTwoDecimals(amount) {
-  return Math.abs(amount * 100 - Math.round(amount * 100)) < 1e-6;
-}
+const INVOICE_OCCURRENCE_UNIQUE_INDEX = 'customer_documents_invoice_occurrence_unique';
 
 export class InvoiceService {
-  constructor({ invoiceRepository, jobRepository, jobService }) {
+  constructor({ invoiceRepository, customerLineItemRepository, jobRepository, jobService }) {
     this.invoiceRepository = invoiceRepository;
+    this.customerLineItemRepository = customerLineItemRepository;
     this.jobRepository = jobRepository;
     this.jobService = jobService;
   }
@@ -39,24 +34,8 @@ export class InvoiceService {
     }
   }
 
-  buildJobSnapshot(job) {
-    return {
-      customerId: job.customerId,
-      customerName: job.customer?.name,
-      locationId: job.locationId,
-      locationAddress: job.location?.addressLine1,
-      serviceTypeId: job.serviceTypeId,
-      serviceTypeName: job.serviceType?.name,
-      date: job.date,
-      startTime: job.startTime,
-      lengthMinutes: job.lengthMinutes,
-    };
-  }
-
-  async generate(jobId, { occurrenceDate, amount }) {
-    if (!hasAtMostTwoDecimals(amount)) {
-      throw new ValidationError('amount cannot have more than 2 decimal places');
-    }
+  async generate(jobId, { occurrenceDate, lineItems, notes }) {
+    validateLineItems(lineItems);
 
     const job = await this.jobRepository.findById(jobId);
     if (!job) {
@@ -75,17 +54,44 @@ export class InvoiceService {
 
     await this.assertValidOccurrenceDate(job, occurrenceDate);
 
+    const duplicateMessage = `Job ${jobId} already has an invoice for ${occurrenceDate}`;
     const existing = await this.invoiceRepository.findByJobAndDate(jobId, occurrenceDate);
     if (existing) {
-      throw new ConflictError(`Job ${jobId} already has an invoice for ${occurrenceDate}`);
+      throw new ConflictError(duplicateMessage);
     }
 
-    return this.invoiceRepository.create({
-      jobId,
-      occurrenceDate,
-      amount,
-      jobSnapshot: this.buildJobSnapshot(job),
-    });
+    let invoice;
+    try {
+      invoice = await sequelize.transaction(async (transaction) => {
+        const created = await this.invoiceRepository.create(
+          {
+            customerId: job.customerId,
+            locationId: job.locationId,
+            serviceTypeId: job.serviceTypeId,
+            notes,
+            jobId,
+            occurrenceDate,
+            jobSnapshot: buildJobSnapshot(job),
+          },
+          { transaction },
+        );
+        await this.customerLineItemRepository.bulkCreate(toLineItemRows(created.id, lineItems), {
+          transaction,
+        });
+        return created;
+      });
+    } catch (error) {
+      // A concurrent request can pass the duplicate check above; the unique index decides.
+      if (
+        error.name === 'SequelizeUniqueConstraintError' &&
+        error.parent?.constraint === INVOICE_OCCURRENCE_UNIQUE_INDEX
+      ) {
+        throw new ConflictError(duplicateMessage);
+      }
+      throw error;
+    }
+
+    return this.getById(invoice.id);
   }
 
   async getById(id) {
@@ -93,10 +99,22 @@ export class InvoiceService {
     if (!invoice) {
       throw new NotFoundError(`Invoice ${id} not found`);
     }
-    return invoice;
+    const rows = await this.customerLineItemRepository.findAllForParent(id);
+    return { ...invoice.toJSON(), ...summarizeLineItems(rows) };
   }
 
   async listForJob(jobId) {
-    return this.invoiceRepository.findAllForJob(jobId);
+    const invoices = await this.invoiceRepository.findAllForJob(jobId);
+    if (invoices.length === 0) {
+      return [];
+    }
+
+    const rows = await this.customerLineItemRepository.findAllForParents(
+      invoices.map((invoice) => invoice.id),
+    );
+    return invoices.map((invoice) => ({
+      ...invoice.toJSON(),
+      ...summarizeLineItems(rows.filter((row) => row.parentId === invoice.id)),
+    }));
   }
 }

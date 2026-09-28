@@ -1,18 +1,17 @@
-import { Baserepository } from '#common/base-repository.js';
-import { Invoice } from '#models/invoice.model.js';
+import { CustomerDocumentRepository } from '#repositories/customer-document.repository.js';
 
-export class InvoiceRepository extends Baserepository {
+export class InvoiceRepository extends CustomerDocumentRepository {
   constructor() {
-    super(Invoice);
+    super('invoice');
   }
 
   async findByJobAndDate(jobId, occurrenceDate, options = {}) {
-    return this.scoped().findOne({ where: { jobId, occurrenceDate }, ...options });
+    return this.scoped().findOne({ where: this.withType({ jobId, occurrenceDate }), ...options });
   }
 
   async findAllForJob(jobId, options = {}) {
     return this.scoped().findAll({
-      where: { jobId },
+      where: this.withType({ jobId }),
       order: [['occurrenceDate', 'DESC']],
       ...options,
     });

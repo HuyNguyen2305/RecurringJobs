@@ -27,8 +27,8 @@ export class JobService {
     this.technicianRepository = technicianRepository;
   }
 
-  async assertExists(repository, id, label) {
-    const record = await repository.findById(id);
+  async assertExists(repository, id, label, options = {}) {
+    const record = await repository.findById(id, options);
     if (!record) {
       throw new NotFoundError(`${label} ${id} not found`);
     }
@@ -105,16 +105,29 @@ export class JobService {
     }
   }
 
-  async create(data) {
+  /**
+   * Pass `transaction` to create the job inside a caller's transaction (e.g. converting an
+   * estimate), so the job is rolled back if the caller's later steps fail.
+   */
+  async create(data, { transaction: outerTransaction } = {}) {
     const { assignees = [], recurrence, ...jobData } = data;
+    // Reads join the caller's transaction too, so a caller holding a pooled connection
+    // never waits on a second one.
+    const readOptions = { transaction: outerTransaction };
 
-    await this.assertExists(this.customerRepository, jobData.customerId, 'Customer');
+    await this.assertExists(this.customerRepository, jobData.customerId, 'Customer', readOptions);
     const location = await this.assertExists(
       this.locationRepository,
       jobData.locationId,
       'Location',
+      readOptions,
     );
-    await this.assertExists(this.serviceTypeRepository, jobData.serviceTypeId, 'Service type');
+    await this.assertExists(
+      this.serviceTypeRepository,
+      jobData.serviceTypeId,
+      'Service type',
+      readOptions,
+    );
 
     if (location.customerId !== jobData.customerId) {
       throw new ValidationError('Location does not belong to the given customer');
@@ -129,11 +142,21 @@ export class JobService {
     }
 
     if (jobData.soldByTechnicianId) {
-      await this.assertExists(this.technicianRepository, jobData.soldByTechnicianId, 'Technician');
+      await this.assertExists(
+        this.technicianRepository,
+        jobData.soldByTechnicianId,
+        'Technician',
+        readOptions,
+      );
     }
 
     for (const assignee of assignees) {
-      await this.assertExists(this.technicianRepository, assignee.technicianId, 'Technician');
+      await this.assertExists(
+        this.technicianRepository,
+        assignee.technicianId,
+        'Technician',
+        readOptions,
+      );
     }
 
     if (assignees.filter((assignee) => assignee.isPrimary).length > 1) {
@@ -148,7 +171,12 @@ export class JobService {
     if (recurrence) {
       this.validateRecurrence(recurrence, jobData.date);
       if (recurrence.exceptType === 'frequency') {
-        await this.assertExists(this.jobRepository, recurrence.exceptJobId, 'Except job');
+        await this.assertExists(
+          this.jobRepository,
+          recurrence.exceptJobId,
+          'Except job',
+          readOptions,
+        );
       }
       jobData.recurrence = {
         ...recurrence,
@@ -157,7 +185,7 @@ export class JobService {
       };
     }
 
-    const job = await sequelize.transaction(async (transaction) => {
+    const insert = async (transaction) => {
       const created = await this.jobRepository.create(jobData, { transaction });
 
       if (assignees.length > 0) {
@@ -172,9 +200,13 @@ export class JobService {
       }
 
       return created;
-    });
+    };
 
-    return this.jobRepository.findById(job.id);
+    const job = outerTransaction
+      ? await insert(outerTransaction)
+      : await sequelize.transaction(insert);
+
+    return this.jobRepository.findById(job.id, readOptions);
   }
 
   async getById(id) {

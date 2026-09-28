@@ -1,3 +1,5 @@
+import { readdirSync } from 'node:fs';
+import { URL } from 'node:url';
 import { jest } from '@jest/globals';
 import { MAX_STRING_LENGTH } from '#constants/validation.js';
 
@@ -9,6 +11,10 @@ const TECHNICIAN_ID = '44444444-4444-4444-8444-444444444444';
 const customerService = { create: jest.fn(async (data) => ({ id: CUSTOMER_ID, ...data })) };
 const jobService = { create: jest.fn(async (data) => ({ id: 'job-1', ...data })) };
 const invoiceService = { generate: jest.fn(async () => ({ id: 'invoice-1' })) };
+const estimateService = {
+  create: jest.fn(async (data) => ({ id: 'estimate-1', ...data })),
+  convertToJob: jest.fn(async (id, data) => ({ id: 'job-1', ...data })),
+};
 
 jest.unstable_mockModule('#service/customer.service.js', () => ({
   CustomerService: jest.fn(() => customerService),
@@ -19,8 +25,19 @@ jest.unstable_mockModule('#service/job.service.js', () => ({
 jest.unstable_mockModule('#service/invoice.service.js', () => ({
   InvoiceService: jest.fn(() => invoiceService),
 }));
+jest.unstable_mockModule('#service/estimate.service.js', () => ({
+  EstimateService: jest.fn(() => estimateService),
+}));
 
 const { buildApp } = await import('../../src/app.js');
+
+// @fastify/autoload imports every router in parallel, and Jest's ESM runtime can fail to link
+// a module that two routers import at the same moment ("... that is not linked"). Loading the
+// routers one at a time first means autoload only ever gets already-linked modules.
+const routersDir = new URL('../../src/routers/', import.meta.url);
+for (const file of readdirSync(routersDir).sort()) {
+  await import(new URL(file, routersDir).href);
+}
 
 async function buildTestApp() {
   const app = await buildApp();
@@ -152,17 +169,42 @@ describe('buildApp body validation', () => {
     expect(jobService.create).not.toHaveBeenCalled();
   });
 
-  it('returns 400 for an invoice amount above the DECIMAL(10,2) maximum', async () => {
+  it.each([
+    ['the old amount field without lineItems', { amount: 150 }],
+    ['no line items', { lineItems: [] }],
+    [
+      'a unit price above the DECIMAL(10,2) maximum',
+      { lineItems: [{ description: 'x', quantity: 1, unitPrice: 100000000 }] },
+    ],
+  ])('returns 400 for an invoice with %s', async (_label, override) => {
     invoiceService.generate.mockClear();
 
     const response = await app.inject({
       method: 'POST',
       url: `/jobs/${CUSTOMER_ID}/invoices`,
-      payload: { occurrenceDate: '2026-10-01', amount: 100000000 },
+      payload: { occurrenceDate: '2026-10-01', ...override },
     });
 
     expect(response.statusCode).toBe(400);
     expect(invoiceService.generate).not.toHaveBeenCalled();
+  });
+
+  it('passes invoice line items and notes to the service, stripping unknown fields', async () => {
+    invoiceService.generate.mockClear();
+    const body = {
+      occurrenceDate: '2026-10-01',
+      notes: 'Gate code 1234',
+      lineItems: [{ description: 'Lawn mowing', quantity: 2, unitPrice: 45.5 }],
+    };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/jobs/${CUSTOMER_ID}/invoices`,
+      payload: { ...body, amount: 91, type: 'estimate', status: 'paid' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(invoiceService.generate).toHaveBeenCalledWith(CUSTOMER_ID, body);
   });
 
   it('strips unknown fields inside nested recurrence and assignees objects', async () => {
@@ -187,5 +229,98 @@ describe('buildApp body validation', () => {
     expect(received).not.toHaveProperty('id');
     expect(received.assignees[0]).toEqual({ technicianId: TECHNICIAN_ID, isPrimary: true });
     expect(received.recurrence).toEqual({ frequency: 'daily', endsType: 'never' });
+  });
+});
+
+describe('buildApp estimate validation', () => {
+  let app;
+
+  const validEstimate = {
+    customerId: CUSTOMER_ID,
+    locationId: LOCATION_ID,
+    serviceTypeId: SERVICE_TYPE_ID,
+    lineItems: [{ description: 'Lawn mowing', quantity: 2, unitPrice: 45.5 }],
+  };
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    estimateService.create.mockClear();
+    estimateService.convertToJob.mockClear();
+  });
+
+  it.each([
+    ['no line items', { lineItems: [] }],
+    [
+      'a whitespace-only description',
+      { lineItems: [{ description: '  ', quantity: 1, unitPrice: 1 }] },
+    ],
+    ['a quantity of 0', { lineItems: [{ description: 'x', quantity: 0, unitPrice: 1 }] }],
+    ['a negative unit price', { lineItems: [{ description: 'x', quantity: 1, unitPrice: -1 }] }],
+    [
+      'a unit price above the DECIMAL(10,2) maximum',
+      { lineItems: [{ description: 'x', quantity: 1, unitPrice: 100000000 }] },
+    ],
+  ])('returns 400 for %s', async (_label, override) => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/estimates',
+      payload: { ...validEstimate, ...override },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(estimateService.create).not.toHaveBeenCalled();
+  });
+
+  it('strips unknown fields such as status and line item ids before reaching the service', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/estimates',
+      payload: {
+        ...validEstimate,
+        status: 'approved',
+        lineItems: [{ ...validEstimate.lineItems[0], id: 'x', lineTotal: '0.01' }],
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(estimateService.create).toHaveBeenCalledWith(validEstimate);
+  });
+
+  it('returns 400 for a status outside sent/approved/declined', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/estimates/${CUSTOMER_ID}/status`,
+      payload: { status: 'draft' },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('does not let the convert body override the estimate’s customer, location or service type', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/estimates/${CUSTOMER_ID}/convert`,
+      payload: {
+        date: '2026-10-05',
+        startTime: '09:00',
+        lengthMinutes: 60,
+        customerId: TECHNICIAN_ID,
+        estimateId: TECHNICIAN_ID,
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(estimateService.convertToJob).toHaveBeenCalledWith(CUSTOMER_ID, {
+      date: '2026-10-05',
+      startTime: '09:00',
+      lengthMinutes: 60,
+    });
   });
 });

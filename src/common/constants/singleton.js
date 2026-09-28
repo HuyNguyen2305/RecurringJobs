@@ -6,6 +6,8 @@ export const REPOSITORY_KEYS = {
   JOB: 'jobRepository',
   JOB_ASSIGNEE: 'jobAssigneeRepository',
   INVOICE: 'invoiceRepository',
+  ESTIMATE: 'estimateRepository',
+  CUSTOMER_LINE_ITEM: 'customerLineItemRepository',
 };
 
 export const SERVICE_KEYS = {
@@ -15,6 +17,7 @@ export const SERVICE_KEYS = {
   TECHNICIAN: 'technicianService',
   JOB: 'jobService',
   INVOICE: 'invoiceService',
+  ESTIMATE: 'estimateService',
 };
 
 export const CONTROLLER_KEYS = {
@@ -24,4 +27,5 @@ export const CONTROLLER_KEYS = {
   TECHNICIAN: 'technicianController',
   JOB: 'jobController',
   INVOICE: 'invoiceController',
+  ESTIMATE: 'estimateController',
 };

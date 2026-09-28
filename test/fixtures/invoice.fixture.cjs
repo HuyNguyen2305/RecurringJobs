@@ -1,8 +1,14 @@
-module.exports = function invoiceFixture({ jobId, occurrenceDate }, overrides = {}) {
+// An invoice row for customer_documents (the repository sets `type`).
+module.exports = function invoiceFixture(
+  { customerId, locationId, serviceTypeId, jobId, occurrenceDate },
+  overrides = {},
+) {
   return {
+    customerId,
+    locationId,
+    serviceTypeId,
     jobId,
     occurrenceDate,
-    amount: 100,
     jobSnapshot: { note: 'fixture snapshot' },
     ...overrides,
   };

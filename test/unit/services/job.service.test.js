@@ -52,6 +52,32 @@ beforeEach(() => {
 });
 
 describe('JobService#create', () => {
+  it('runs every read and write inside a caller-supplied transaction instead of opening one', async () => {
+    const outer = { id: 'outer-tx' };
+    const service = buildService();
+
+    await service.create(
+      { ...baseJobData, assignees: [{ technicianId: 'technician-1' }] },
+      { transaction: outer },
+    );
+
+    expect(fakeSequelize.transaction).not.toHaveBeenCalled();
+    expect(service.customerRepository.findById).toHaveBeenCalledWith('customer-1', {
+      transaction: outer,
+    });
+    expect(service.locationRepository.findById).toHaveBeenCalledWith('location-1', {
+      transaction: outer,
+    });
+    expect(service.technicianRepository.findById).toHaveBeenCalledWith('technician-1', {
+      transaction: outer,
+    });
+    expect(service.jobRepository.create).toHaveBeenCalledWith(baseJobData, { transaction: outer });
+    expect(service.jobAssigneeRepository.bulkCreate).toHaveBeenCalledWith(expect.any(Array), {
+      transaction: outer,
+    });
+    expect(service.jobRepository.findById).toHaveBeenCalledWith('job-1', { transaction: outer });
+  });
+
   it('creates a job and its assignees within a transaction', async () => {
     const service = buildService();
 
