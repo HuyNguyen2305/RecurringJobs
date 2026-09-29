@@ -1,3 +1,4 @@
+import { requestDateSchema } from '#schemas/date.schema.js';
 import {
   lineItemsRequestSchema,
   lineItemsResponseSchema,
@@ -37,8 +38,8 @@ export const createInvoiceSchema = {
     required: ['occurrenceDate', 'lineItems'],
     additionalProperties: false,
     properties: {
-      occurrenceDate: { type: 'string', format: 'date' },
-      notes: { type: 'string', maxLength: MAX_NOTES_LENGTH },
+      occurrenceDate: requestDateSchema,
+      notes: { type: ['string', 'null'], maxLength: MAX_NOTES_LENGTH },
       lineItems: lineItemsRequestSchema,
     },
   },

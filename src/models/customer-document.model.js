@@ -11,8 +11,8 @@ export const ESTIMATE_STATUSES = ['draft', 'sent', 'approved', 'declined'];
 export const INVOICE_STATUSES = ['draft', 'sent', 'paid'];
 
 /**
- * Estimates and invoices in one table, discriminated by `type` - see the approved
- * exception in CLAUDE.md. DB CHECK constraints enforce the per-type rules:
+ * Estimates and invoices in one table, discriminated by `type` - see
+ * docs/adr/0001-customer-documents.md. DB CHECK constraints enforce the per-type rules:
  * - invoice: jobId, jobSnapshot and occurrenceDate are required.
  * - estimate: occurrenceDate is always null; jobId + jobSnapshot are set together,
  *   only once the estimate is approved and converted into a job.

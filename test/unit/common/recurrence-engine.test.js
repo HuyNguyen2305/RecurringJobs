@@ -234,6 +234,38 @@ describe('generateOccurrences', () => {
     });
   });
 
+  describe('years below 1000', () => {
+    it('keeps years 0-99 as-is instead of mapping them to 1900-1999', () => {
+      const rule = { frequency: 'daily', interval: 1, endsType: 'never' };
+      expect(generateOccurrences(rule, '0050-01-01', { limit: 2 })).toEqual([
+        '0050-01-01',
+        '0050-01-02',
+      ]);
+    });
+
+    it('zero-pads the year and applies that year’s own calendar (100 is not a leap year)', () => {
+      const rule = { frequency: 'daily', interval: 1, endsType: 'never' };
+      expect(generateOccurrences(rule, '0100-02-28', { limit: 2 })).toEqual([
+        '0100-02-28',
+        '0100-03-01',
+      ]);
+    });
+
+    it('clamps monthly day-of-month in an early year like any other', () => {
+      const rule = {
+        frequency: 'monthly',
+        interval: 1,
+        monthlyRepeatBy: 'day_of_month',
+        endsType: 'never',
+      };
+      expect(generateOccurrences(rule, '0080-01-31', { limit: 3 })).toEqual([
+        '0080-01-31',
+        '0080-02-29', // year 80 is a leap year
+        '0080-03-31',
+      ]);
+    });
+  });
+
   describe('guards', () => {
     it('stops at the first date past the JS Date range instead of emitting NaN dates', () => {
       const rule = { frequency: 'daily', interval: 1e9, endsType: 'never' };

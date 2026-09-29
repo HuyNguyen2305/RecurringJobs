@@ -27,9 +27,9 @@ export const createLocationSchema = {
         maxLength: MAX_STRING_LENGTH,
         pattern: NON_BLANK_PATTERN,
       },
-      city: { type: 'string', maxLength: MAX_STRING_LENGTH },
-      state: { type: 'string', maxLength: MAX_STRING_LENGTH },
-      zip: { type: 'string', maxLength: MAX_STRING_LENGTH },
+      city: { type: ['string', 'null'], maxLength: MAX_STRING_LENGTH },
+      state: { type: ['string', 'null'], maxLength: MAX_STRING_LENGTH },
+      zip: { type: ['string', 'null'], maxLength: MAX_STRING_LENGTH },
     },
   },
   response: {

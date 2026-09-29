@@ -1,3 +1,4 @@
+import { requestDateSchema } from '#schemas/date.schema.js';
 import { MAX_LENGTH_MINUTES, MAX_RECURRENCE_INTERVAL } from '#constants/validation.js';
 
 const JOB_STATUSES = ['unconfirmed', 'confirmed', 'in_progress', 'completed', 'canceled'];
@@ -33,7 +34,7 @@ const recurrenceSchema = {
       description:
         'Number of scheduled dates, counted before except rules are applied: an excepted date still uses up a slot (RFC 5545).',
     },
-    endsOnDate: { type: 'string', format: 'date' },
+    endsOnDate: requestDateSchema,
     exceptType: { type: 'string', enum: EXCEPT_TYPES },
     exceptMonths: {
       type: 'array',
@@ -55,7 +56,7 @@ export const createJobSchema = {
       customerId: { type: 'string', format: 'uuid' },
       locationId: { type: 'string', format: 'uuid' },
       serviceTypeId: { type: 'string', format: 'uuid' },
-      date: { type: 'string', format: 'date' },
+      date: requestDateSchema,
       startTime: { type: 'string', pattern: timePattern },
       lengthMinutes: { type: 'integer', minimum: 1, maximum: MAX_LENGTH_MINUTES },
       timeWindowStart: { type: 'string', pattern: timePattern },
@@ -104,8 +105,8 @@ export const getJobOccurrencesSchema = {
   querystring: {
     type: 'object',
     properties: {
-      from: { type: 'string', format: 'date' },
-      to: { type: 'string', format: 'date' },
+      from: requestDateSchema,
+      to: requestDateSchema,
       limit: { type: 'integer', minimum: 1, maximum: 1000 },
     },
   },

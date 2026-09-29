@@ -13,5 +13,8 @@ export const MAX_RECURRENCE_INTERVAL = 99;
 // Largest money value that fits DECIMAL(10,2).
 export const MAX_MONEY_AMOUNT = 99999999.99;
 
+// Request dates must fall in 1900-2099; `format: 'date'` still validates the full date.
+export const DATE_RANGE_PATTERN = '^(19|20)\\d{2}-';
+
 // Invoices can be generated for past occurrences and at most this many days ahead.
 export const INVOICE_MAX_DAYS_AHEAD = 14;

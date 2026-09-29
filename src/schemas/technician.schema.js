@@ -23,7 +23,7 @@ export const createTechnicianSchema = {
         maxLength: MAX_STRING_LENGTH,
         pattern: NON_BLANK_PATTERN,
       },
-      email: { type: 'string', format: 'email', maxLength: MAX_STRING_LENGTH },
+      email: { type: ['string', 'null'], format: 'email', maxLength: MAX_STRING_LENGTH },
     },
   },
   response: {

@@ -9,7 +9,14 @@ const SERVICE_TYPE_ID = '33333333-3333-4333-8333-333333333333';
 const TECHNICIAN_ID = '44444444-4444-4444-8444-444444444444';
 
 const customerService = { create: jest.fn(async (data) => ({ id: CUSTOMER_ID, ...data })) };
-const jobService = { create: jest.fn(async (data) => ({ id: 'job-1', ...data })) };
+const jobService = {
+  create: jest.fn(async (data) => ({ id: 'job-1', ...data })),
+  list: jest.fn(async ({ page, pageSize }) => ({
+    data: [],
+    pagination: { page, pageSize, total: 0 },
+  })),
+  getOccurrences: jest.fn(async () => []),
+};
 const invoiceService = { generate: jest.fn(async () => ({ id: 'invoice-1' })) };
 const estimateService = {
   create: jest.fn(async (data) => ({ id: 'estimate-1', ...data })),
@@ -39,6 +46,10 @@ for (const file of readdirSync(routersDir).sort()) {
   await import(new URL(file, routersDir).href);
 }
 
+// The first boot in a cold process loads the whole app and can exceed Jest's 5s default
+// hook timeout on a slow start, which failed the first describe's tests intermittently.
+const APP_BOOT_TIMEOUT_MS = 30_000;
+
 async function buildTestApp() {
   const app = await buildApp();
   app.log.level = 'silent';
@@ -51,7 +62,7 @@ describe('buildApp error handler', () => {
 
   beforeAll(async () => {
     app = await buildTestApp();
-  });
+  }, APP_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     await app.close();
@@ -87,7 +98,7 @@ describe('buildApp body validation', () => {
 
   beforeAll(async () => {
     app = await buildTestApp();
-  });
+  }, APP_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     await app.close();
@@ -244,7 +255,7 @@ describe('buildApp estimate validation', () => {
 
   beforeAll(async () => {
     app = await buildTestApp();
-  });
+  }, APP_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     await app.close();
@@ -303,7 +314,7 @@ describe('buildApp estimate validation', () => {
     expect(response.statusCode).toBe(400);
   });
 
-  it('does not let the convert body override the estimate’s customer, location or service type', async () => {
+  it('does not let the convert body set the customer, location, service type or job status', async () => {
     const response = await app.inject({
       method: 'POST',
       url: `/estimates/${CUSTOMER_ID}/convert`,
@@ -313,6 +324,7 @@ describe('buildApp estimate validation', () => {
         lengthMinutes: 60,
         customerId: TECHNICIAN_ID,
         estimateId: TECHNICIAN_ID,
+        status: 'canceled',
       },
     });
 
@@ -321,6 +333,264 @@ describe('buildApp estimate validation', () => {
       date: '2026-10-05',
       startTime: '09:00',
       lengthMinutes: 60,
+    });
+  });
+});
+
+describe('buildApp request date range (1900-01-01 to 2099-12-31)', () => {
+  let app;
+
+  const job = {
+    customerId: CUSTOMER_ID,
+    locationId: LOCATION_ID,
+    serviceTypeId: SERVICE_TYPE_ID,
+    startTime: '09:00',
+    lengthMinutes: 60,
+  };
+
+  const postJob = (payload) => app.inject({ method: 'POST', url: '/jobs', payload });
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+  }, APP_BOOT_TIMEOUT_MS);
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    jobService.create.mockClear();
+    invoiceService.generate.mockClear();
+  });
+
+  it.each(['0000-01-01', '0050-01-01', '1899-12-31', '2100-01-01'])(
+    'rejects job date %s',
+    async (date) => {
+      const response = await postJob({ ...job, date });
+
+      expect(response.statusCode).toBe(400);
+      expect(jobService.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['1900-01-01', '2099-12-31'])('accepts job date %s', async (date) => {
+    const response = await postJob({ ...job, date });
+
+    expect(response.statusCode).toBe(201);
+  });
+
+  it('rejects a recurrence endsOnDate outside the range', async () => {
+    const response = await postJob({
+      ...job,
+      date: '2026-10-01',
+      recurrence: { frequency: 'daily', endsType: 'on_date', endsOnDate: '2100-01-01' },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('rejects an occurrences query date outside the range', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/jobs/${CUSTOMER_ID}/occurrences?to=2100-01-01`,
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('rejects an invoice occurrenceDate outside the range', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/jobs/${CUSTOMER_ID}/invoices`,
+      payload: {
+        occurrenceDate: '1899-12-31',
+        lineItems: [{ description: 'x', quantity: 1, unitPrice: 1 }],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(invoiceService.generate).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildApp strict body types, nulls and trimming', () => {
+  let app;
+
+  const customer = (payload) => app.inject({ method: 'POST', url: '/customers', payload });
+  const job = {
+    customerId: CUSTOMER_ID,
+    locationId: LOCATION_ID,
+    serviceTypeId: SERVICE_TYPE_ID,
+    date: '2026-10-01',
+    startTime: '09:00',
+    lengthMinutes: 60,
+  };
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+  }, APP_BOOT_TIMEOUT_MS);
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    customerService.create.mockClear();
+    jobService.create.mockClear();
+    jobService.list.mockClear();
+    jobService.getOccurrences.mockClear();
+    estimateService.create.mockClear();
+  });
+
+  it.each([
+    ['a number for a string (name: 123)', { name: 123 }],
+    ['a boolean for a string (name: true)', { name: true }],
+    ['null for a required string (name: null)', { name: null }],
+  ])('rejects %s in a body', async (_label, payload) => {
+    const response = await customer(payload);
+
+    expect(response.statusCode).toBe(400);
+    expect(customerService.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a numeric string for an integer (lengthMinutes: "60")', { lengthMinutes: '60' }],
+    ['a string for a boolean (isLocked: "true")', { isLocked: 'true' }],
+    [
+      'a single value where an array is expected (weeklyDaysOfWeek: 1)',
+      { recurrence: { frequency: 'weekly', weeklyPeriod: 'every', weeklyDaysOfWeek: 1 } },
+    ],
+  ])('rejects %s in a job body', async (_label, override) => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/jobs',
+      payload: { ...job, ...override },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(jobService.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a numeric string line-item quantity', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/estimates',
+      payload: {
+        customerId: CUSTOMER_ID,
+        locationId: LOCATION_ID,
+        serviceTypeId: SERVICE_TYPE_ID,
+        lineItems: [{ description: 'Mow', quantity: '2', unitPrice: 10 }],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(estimateService.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts null in optional text fields and passes it through as null', async () => {
+    const response = await customer({ name: 'Alice', email: null, phone: null });
+
+    expect(response.statusCode).toBe(201);
+    expect(customerService.create).toHaveBeenCalledWith({
+      name: 'Alice',
+      email: null,
+      phone: null,
+    });
+  });
+
+  it('accepts null estimate notes', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/estimates',
+      payload: {
+        customerId: CUSTOMER_ID,
+        locationId: LOCATION_ID,
+        serviceTypeId: SERVICE_TYPE_ID,
+        notes: null,
+        lineItems: [{ description: 'Mow', quantity: 1, unitPrice: 10 }],
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(estimateService.create.mock.calls[0][0].notes).toBeNull();
+  });
+
+  it('trims strings, including nested line-item descriptions, before validation', async () => {
+    await customer({ name: '  Alice  ', email: ' alice@example.com ' });
+    await app.inject({
+      method: 'POST',
+      url: '/estimates',
+      payload: {
+        customerId: CUSTOMER_ID,
+        locationId: LOCATION_ID,
+        serviceTypeId: SERVICE_TYPE_ID,
+        notes: '  call first  ',
+        lineItems: [{ description: '  Mow  ', quantity: 1, unitPrice: 10 }],
+      },
+    });
+
+    expect(customerService.create).toHaveBeenCalledWith({
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
+    const estimate = estimateService.create.mock.calls[0][0];
+    expect(estimate.notes).toBe('call first');
+    expect(estimate.lineItems[0].description).toBe('Mow');
+  });
+
+  it('still rejects a whitespace-only name after trimming, with the blank-value message', async () => {
+    const response = await customer({ name: '   ' });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().message).toBe('body/name must NOT have fewer than 1 characters');
+  });
+
+  it('stores blank optional text as null', async () => {
+    const response = await customer({ name: 'Alice', email: '', phone: '   ' });
+
+    expect(response.statusCode).toBe(201);
+    expect(customerService.create).toHaveBeenCalledWith({
+      name: 'Alice',
+      email: null,
+      phone: null,
+    });
+  });
+
+  it('turns blank estimate notes into null', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/estimates',
+      payload: {
+        customerId: CUSTOMER_ID,
+        locationId: LOCATION_ID,
+        serviceTypeId: SERVICE_TYPE_ID,
+        notes: '  ',
+        lineItems: [{ description: 'Mow', quantity: 1, unitPrice: 10 }],
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(estimateService.create.mock.calls[0][0].notes).toBeNull();
+  });
+
+  it('keeps coercing query strings (?page=2&pageSize=5)', async () => {
+    const response = await app.inject({ method: 'GET', url: '/jobs?page=2&pageSize=5' });
+
+    expect(response.statusCode).toBe(200);
+    expect(jobService.list).toHaveBeenCalledWith({ page: 2, pageSize: 5 });
+  });
+
+  it('keeps coercing the occurrences limit query (?limit=3)', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/jobs/${CUSTOMER_ID}/occurrences?limit=3`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(jobService.getOccurrences).toHaveBeenCalledWith(CUSTOMER_ID, {
+      from: undefined,
+      to: undefined,
+      limit: 3,
     });
   });
 });

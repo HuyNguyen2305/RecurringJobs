@@ -23,7 +23,7 @@ export const createServiceTypeSchema = {
         maxLength: MAX_STRING_LENGTH,
         pattern: NON_BLANK_PATTERN,
       },
-      description: { type: 'string' },
+      description: { type: ['string', 'null'] },
     },
   },
   response: {

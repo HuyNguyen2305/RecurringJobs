@@ -2,10 +2,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import autoload from '@fastify/autoload';
+import AjvCompiler from '@fastify/ajv-compiler';
 
 import { buildContainer } from './containter.js';
 import { setIdentity } from '#common/auth/set-identity.js';
 import { CustomError } from '#common/error.js';
+import { normalizeBody } from '#common/normalize-body.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +18,22 @@ export async function buildApp() {
   app.decorate('container', container);
 
   app.addHook('onRequest', setIdentity);
+
+  // JSON bodies already carry real types, so they are validated strictly ("123" stays a
+  // string, null stays null). Query strings and URL params arrive as text and keep
+  // Fastify's default coercion (?page=2 -> 2).
+  const buildValidatorCompiler = AjvCompiler();
+  const bodyCompiler = buildValidatorCompiler({}, { customOptions: { coerceTypes: false } });
+  const defaultCompiler = buildValidatorCompiler({}, { customOptions: {} });
+  app.setValidatorCompiler((routeSchema) =>
+    (routeSchema.httpPart === 'body' ? bodyCompiler : defaultCompiler)(routeSchema),
+  );
+
+  // Runs before validation: every body string is trimmed ("  Alice  " -> "Alice"), and blank
+  // optional text becomes null, while a blank required field is still rejected as blank.
+  app.addHook('preValidation', async (request) => {
+    request.body = normalizeBody(request.body, request.routeOptions.schema?.body);
+  });
 
   app.register(autoload, {
     dir: path.join(__dirname, 'routers'),

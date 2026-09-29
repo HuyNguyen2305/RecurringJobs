@@ -2,13 +2,21 @@ import { ValidationError } from '#common/error.js';
 
 const MS_PER_DAY = 86400000;
 
+// Date.UTC(y, ...) maps years 0-99 to 1900-1999; setUTCFullYear takes the year as-is.
+// Month/day overflow still rolls over (e.g. day 0 is the last day of the previous month).
+function utcDate(year, month, day) {
+  const date = new Date(0);
+  date.setUTCFullYear(year, month, day);
+  return date;
+}
+
 function parseDate(str) {
   const [y, m, d] = str.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d));
+  return utcDate(y, m - 1, d);
 }
 
 function formatDate(date) {
-  const y = date.getUTCFullYear();
+  const y = String(date.getUTCFullYear()).padStart(4, '0');
   const m = String(date.getUTCMonth() + 1).padStart(2, '0');
   const d = String(date.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
@@ -19,16 +27,16 @@ function addDays(date, days) {
 }
 
 function daysInMonth(year, month) {
-  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return utcDate(year, month + 1, 0).getUTCDate();
 }
 
 function nthWeekdayOfMonth(year, month, weekday, n) {
-  const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  const firstWeekday = utcDate(year, month, 1).getUTCDay();
   let offset = weekday - firstWeekday;
   if (offset < 0) offset += 7;
   const day = 1 + offset + (n - 1) * 7;
   if (day > daysInMonth(year, month)) return null;
-  return new Date(Date.UTC(year, month, day));
+  return utcDate(year, month, day);
 }
 
 function ordinalOfWeekdayInMonth(date) {
@@ -109,7 +117,7 @@ function* iterateMonthlyDayOfMonth(anchor, interval) {
   let month = anchor.getUTCMonth();
   while (true) {
     const clampedDay = Math.min(day, daysInMonth(year, month));
-    yield new Date(Date.UTC(year, month, clampedDay));
+    yield utcDate(year, month, clampedDay);
     month += interval;
     while (month > 11) {
       month -= 12;
@@ -140,7 +148,7 @@ function* iterateYearlyDayOfYear(anchor, interval) {
   let year = anchor.getUTCFullYear();
   while (true) {
     const clampedDay = Math.min(day, daysInMonth(year, month));
-    yield new Date(Date.UTC(year, month, clampedDay));
+    yield utcDate(year, month, clampedDay);
     year += interval;
   }
 }

@@ -3,8 +3,10 @@ import { lineItemsRequestSchema, MAX_NOTES_LENGTH } from '#schemas/line-item.sch
 
 const ESTIMATE_STATUS_TARGETS = ['sent', 'approved', 'declined'];
 
-// The estimate supplies these to the job it converts into.
-const ESTIMATE_OWNED_JOB_FIELDS = ['customerId', 'locationId', 'serviceTypeId'];
+// Job fields a convert request may not set: the estimate supplies customer, location and
+// service type, and a converted job always starts in the default status - converting straight
+// into a canceled job would leave an approved estimate with a job that can never be invoiced.
+const CONVERT_EXCLUDED_JOB_FIELDS = ['customerId', 'locationId', 'serviceTypeId', 'status'];
 
 const idParams = {
   type: 'object',
@@ -23,7 +25,7 @@ export const createEstimateSchema = {
       customerId: { type: 'string', format: 'uuid' },
       locationId: { type: 'string', format: 'uuid' },
       serviceTypeId: { type: 'string', format: 'uuid' },
-      notes: { type: 'string', maxLength: MAX_NOTES_LENGTH },
+      notes: { type: ['string', 'null'], maxLength: MAX_NOTES_LENGTH },
       lineItems: lineItemsRequestSchema,
     },
   },
@@ -51,10 +53,10 @@ export const convertEstimateSchema = {
   params: idParams,
   body: {
     ...jobBody,
-    required: jobBody.required.filter((field) => !ESTIMATE_OWNED_JOB_FIELDS.includes(field)),
+    required: jobBody.required.filter((field) => !CONVERT_EXCLUDED_JOB_FIELDS.includes(field)),
     properties: Object.fromEntries(
       Object.entries(jobBody.properties).filter(
-        ([field]) => !ESTIMATE_OWNED_JOB_FIELDS.includes(field),
+        ([field]) => !CONVERT_EXCLUDED_JOB_FIELDS.includes(field),
       ),
     ),
   },

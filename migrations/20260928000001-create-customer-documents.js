@@ -1,7 +1,7 @@
 'use strict';
 
-// Estimates and invoices share one table, discriminated by `type` - see the approved
-// exception in CLAUDE.md. CHECK constraints enforce which columns each type must fill.
+// Estimates and invoices share one table, discriminated by `type` - see
+// docs/adr/0001-customer-documents.md. CHECK constraints enforce which columns each type must fill.
 module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.sequelize.transaction(async (transaction) => {
