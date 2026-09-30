@@ -22,6 +22,12 @@ const estimateService = {
   create: jest.fn(async (data) => ({ id: 'estimate-1', ...data })),
   convertToJob: jest.fn(async (id, data) => ({ id: 'job-1', ...data })),
 };
+const workOrderService = {
+  create: jest.fn(async (jobId, data) => ({ id: 'work-order-1', jobId, ...data })),
+  updateStatus: jest.fn(async (id, status) => ({ id, status })),
+  updateTask: jest.fn(async (id) => ({ id })),
+  listForJob: jest.fn(async () => []),
+};
 
 jest.unstable_mockModule('#service/customer.service.js', () => ({
   CustomerService: jest.fn(() => customerService),
@@ -34,6 +40,9 @@ jest.unstable_mockModule('#service/invoice.service.js', () => ({
 }));
 jest.unstable_mockModule('#service/estimate.service.js', () => ({
   EstimateService: jest.fn(() => estimateService),
+}));
+jest.unstable_mockModule('#service/work-order.service.js', () => ({
+  WorkOrderService: jest.fn(() => workOrderService),
 }));
 
 const { buildApp } = await import('../../src/app.js');
@@ -334,6 +343,111 @@ describe('buildApp estimate validation', () => {
       startTime: '09:00',
       lengthMinutes: 60,
     });
+  });
+});
+
+describe('buildApp work order validation', () => {
+  let app;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+  }, APP_BOOT_TIMEOUT_MS);
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    workOrderService.create.mockClear();
+    workOrderService.updateStatus.mockClear();
+    workOrderService.updateTask.mockClear();
+  });
+
+  it('requires occurrenceDate', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/jobs/${CUSTOMER_ID}/work-orders`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(workOrderService.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts a notes-only work order (tasks are optional)', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/jobs/${CUSTOMER_ID}/work-orders`,
+      payload: { occurrenceDate: '2026-10-05', notes: 'Gate code 1234' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(workOrderService.create).toHaveBeenCalledWith(CUSTOMER_ID, {
+      occurrenceDate: '2026-10-05',
+      notes: 'Gate code 1234',
+    });
+  });
+
+  it('strips unknown fields such as status and task ids before reaching the service', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/jobs/${CUSTOMER_ID}/work-orders`,
+      payload: {
+        occurrenceDate: '2026-10-05',
+        status: 'completed',
+        tasks: [{ description: 'Mow', id: 'x', isDone: true }],
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(workOrderService.create).toHaveBeenCalledWith(CUSTOMER_ID, {
+      occurrenceDate: '2026-10-05',
+      tasks: [{ description: 'Mow' }],
+    });
+  });
+
+  it('returns 400 for a blank task description', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/jobs/${CUSTOMER_ID}/work-orders`,
+      payload: { occurrenceDate: '2026-10-05', tasks: [{ description: '   ' }] },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(workOrderService.create).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for a status outside in_progress/completed/canceled', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/work-orders/${CUSTOMER_ID}/status`,
+      payload: { status: 'dispatched' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(workOrderService.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('updates a task’s isDone flag', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/work-orders/${CUSTOMER_ID}/tasks/${LOCATION_ID}`,
+      payload: { isDone: true },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(workOrderService.updateTask).toHaveBeenCalledWith(CUSTOMER_ID, LOCATION_ID, true);
+  });
+
+  it('returns 400 when isDone is missing', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/work-orders/${CUSTOMER_ID}/tasks/${LOCATION_ID}`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(workOrderService.updateTask).not.toHaveBeenCalled();
   });
 });
 

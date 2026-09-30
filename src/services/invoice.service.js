@@ -4,6 +4,7 @@ import { INVOICE_MAX_DAYS_AHEAD } from '#constants/validation.js';
 import { addDaysUtc } from '#common/dates.js';
 import { validateLineItems, toLineItemRows, summarizeLineItems } from '#common/line-items.js';
 import { buildJobSnapshot } from '#common/job-snapshot.js';
+import { assertValidOccurrenceDate } from '#common/occurrence-validation.js';
 
 const INVOICE_OCCURRENCE_UNIQUE_INDEX = 'customer_documents_invoice_occurrence_unique';
 
@@ -13,25 +14,6 @@ export class InvoiceService {
     this.customerLineItemRepository = customerLineItemRepository;
     this.jobRepository = jobRepository;
     this.jobService = jobService;
-  }
-
-  async assertValidOccurrenceDate(job, occurrenceDate) {
-    if (!job.recurrence) {
-      if (occurrenceDate !== job.date) {
-        throw new ValidationError(
-          `occurrenceDate must equal the job date (${job.date}) for a non-recurring job`,
-        );
-      }
-      return;
-    }
-
-    const matches = await this.jobService.getOccurrences(job.id, {
-      from: occurrenceDate,
-      to: occurrenceDate,
-    });
-    if (!matches.includes(occurrenceDate)) {
-      throw new ValidationError(`${occurrenceDate} is not a valid occurrence of this job`);
-    }
   }
 
   async generate(jobId, { occurrenceDate, lineItems, notes }) {
@@ -52,7 +34,7 @@ export class InvoiceService {
       );
     }
 
-    await this.assertValidOccurrenceDate(job, occurrenceDate);
+    await assertValidOccurrenceDate(job, occurrenceDate, this.jobService);
 
     const duplicateMessage = `Job ${jobId} already has an invoice for ${occurrenceDate}`;
     const existing = await this.invoiceRepository.findByJobAndDate(jobId, occurrenceDate);

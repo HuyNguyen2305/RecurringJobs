@@ -8,6 +8,8 @@ export const REPOSITORY_KEYS = {
   INVOICE: 'invoiceRepository',
   ESTIMATE: 'estimateRepository',
   CUSTOMER_LINE_ITEM: 'customerLineItemRepository',
+  WORK_ORDER: 'workOrderRepository',
+  WORK_ORDER_TASK: 'workOrderTaskRepository',
 };
 
 export const SERVICE_KEYS = {
@@ -18,6 +20,7 @@ export const SERVICE_KEYS = {
   JOB: 'jobService',
   INVOICE: 'invoiceService',
   ESTIMATE: 'estimateService',
+  WORK_ORDER: 'workOrderService',
 };
 
 export const CONTROLLER_KEYS = {
@@ -28,4 +31,5 @@ export const CONTROLLER_KEYS = {
   JOB: 'jobController',
   INVOICE: 'invoiceController',
   ESTIMATE: 'estimateController',
+  WORK_ORDER: 'workOrderController',
 };

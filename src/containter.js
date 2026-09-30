@@ -11,6 +11,8 @@ import { JobAssigneeRepository } from '#repositories/job-assignee.repository.js'
 import { InvoiceRepository } from '#repositories/invoice.repository.js';
 import { EstimateRepository } from '#repositories/estimate.repository.js';
 import { CustomerLineItemRepository } from '#repositories/customer-line-item.repository.js';
+import { WorkOrderRepository } from '#repositories/work-order.repository.js';
+import { WorkOrderTaskRepository } from '#repositories/work-order-task.repository.js';
 
 import { CustomerService } from '#service/customer.service.js';
 import { LocationService } from '#service/location.service.js';
@@ -19,6 +21,7 @@ import { TechnicianService } from '#service/technician.service.js';
 import { JobService } from '#service/job.service.js';
 import { InvoiceService } from '#service/invoice.service.js';
 import { EstimateService } from '#service/estimate.service.js';
+import { WorkOrderService } from '#service/work-order.service.js';
 
 import { CustomerController } from '#controllers/customer.controller.js';
 import { LocationController } from '#controllers/location.controller.js';
@@ -27,6 +30,7 @@ import { TechnicianController } from '#controllers/technician.controller.js';
 import { JobController } from '#controllers/job.controller.js';
 import { InvoiceController } from '#controllers/invoice.controller.js';
 import { EstimateController } from '#controllers/estimate.controller.js';
+import { WorkOrderController } from '#controllers/work-order.controller.js';
 
 export function buildContainer() {
   const container = createContainer({ injectionMode: InjectionMode.PROXY });
@@ -41,6 +45,8 @@ export function buildContainer() {
     [REPOSITORY_KEYS.INVOICE]: asClass(InvoiceRepository).singleton(),
     [REPOSITORY_KEYS.ESTIMATE]: asClass(EstimateRepository).singleton(),
     [REPOSITORY_KEYS.CUSTOMER_LINE_ITEM]: asClass(CustomerLineItemRepository).singleton(),
+    [REPOSITORY_KEYS.WORK_ORDER]: asClass(WorkOrderRepository).singleton(),
+    [REPOSITORY_KEYS.WORK_ORDER_TASK]: asClass(WorkOrderTaskRepository).singleton(),
 
     [SERVICE_KEYS.CUSTOMER]: asClass(CustomerService).singleton(),
     [SERVICE_KEYS.LOCATION]: asClass(LocationService).singleton(),
@@ -49,6 +55,7 @@ export function buildContainer() {
     [SERVICE_KEYS.JOB]: asClass(JobService).singleton(),
     [SERVICE_KEYS.INVOICE]: asClass(InvoiceService).singleton(),
     [SERVICE_KEYS.ESTIMATE]: asClass(EstimateService).singleton(),
+    [SERVICE_KEYS.WORK_ORDER]: asClass(WorkOrderService).singleton(),
 
     [CONTROLLER_KEYS.CUSTOMER]: asClass(CustomerController).singleton(),
     [CONTROLLER_KEYS.LOCATION]: asClass(LocationController).singleton(),
@@ -57,6 +64,7 @@ export function buildContainer() {
     [CONTROLLER_KEYS.JOB]: asClass(JobController).singleton(),
     [CONTROLLER_KEYS.INVOICE]: asClass(InvoiceController).singleton(),
     [CONTROLLER_KEYS.ESTIMATE]: asClass(EstimateController).singleton(),
+    [CONTROLLER_KEYS.WORK_ORDER]: asClass(WorkOrderController).singleton(),
   });
 
   return container;
