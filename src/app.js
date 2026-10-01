@@ -21,7 +21,8 @@ export async function buildApp() {
 
   // JSON bodies already carry real types, so they are validated strictly ("123" stays a
   // string, null stays null). Query strings and URL params arrive as text and keep
-  // Fastify's default coercion (?page=2 -> 2).
+  // Fastify's default coercion (?page=2 -> 2). Unknown body fields are stripped, not rejected
+  // (Ajv's removeAdditional default), so `additionalProperties: false` means "drop them".
   const buildValidatorCompiler = AjvCompiler();
   const bodyCompiler = buildValidatorCompiler({}, { customOptions: { coerceTypes: false } });
   const defaultCompiler = buildValidatorCompiler({}, { customOptions: {} });

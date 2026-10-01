@@ -5,7 +5,9 @@ import { Location } from '#models/location.model.js';
 import { ServiceType } from '#models/service-type.model.js';
 import { Technician } from '#models/technician.model.js';
 
-export const JOB_STATUSES = ['unconfirmed', 'confirmed', 'in_progress', 'completed', 'canceled'];
+import { JOB_STATUSES } from '#constants/job-status.js';
+
+export { JOB_STATUSES };
 
 export class Job extends Model {}
 

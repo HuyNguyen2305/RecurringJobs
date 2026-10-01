@@ -55,6 +55,12 @@ function buildService(overrides = {}) {
     jobRepository: {
       findById: jest.fn(async () => jobRow()),
     },
+    jobOccurrenceRepository: {
+      findByJobAndDate: jest.fn(async () => null),
+    },
+    jobOccurrenceService: {
+      assertAvailableFor: jest.fn(async () => undefined),
+    },
     jobService: {
       getOccurrences: jest.fn(async () => []),
     },
@@ -78,15 +84,64 @@ describe('WorkOrderService#create', () => {
     );
   });
 
-  it('throws ValidationError for a canceled job and creates nothing', async () => {
+  it.each(['canceled', 'completed', 'terminate_service', 'rescheduled'])(
+    'throws ValidationError for a %s job and creates nothing',
+    async (status) => {
+      const service = buildService({
+        jobRepository: { findById: jest.fn(async () => jobRow({ status })) },
+      });
+
+      await expect(service.create('job-1', { occurrenceDate: '2026-10-01' })).rejects.toThrow(
+        ValidationError,
+      );
+      expect(service.workOrderRepository.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('asks the occurrence service whether the occurrence can take a work order (completed is not allowed)', async () => {
+    const service = buildService();
+
+    await service.create('job-1', { occurrenceDate: '2026-10-01' });
+
+    expect(service.jobOccurrenceService.assertAvailableFor).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'job-1' }),
+      '2026-10-01',
+      { action: 'create a work order', allowCompleted: false },
+    );
+  });
+
+  it('creates nothing when the occurrence service refuses the occurrence', async () => {
     const service = buildService({
-      jobRepository: { findById: jest.fn(async () => jobRow({ status: 'canceled' })) },
+      jobOccurrenceService: {
+        assertAvailableFor: jest.fn(async () => {
+          throw new ValidationError('Cannot create a work order for a canceled occurrence');
+        }),
+      },
     });
 
     await expect(service.create('job-1', { occurrenceDate: '2026-10-01' })).rejects.toThrow(
       ValidationError,
     );
     expect(service.workOrderRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts the date a rescheduled visit was moved to', async () => {
+    // The job is a one-off on 2026-10-01; its visit was moved to 2026-10-05.
+    const service = buildService({
+      jobOccurrenceRepository: {
+        findByJobAndDate: jest.fn(async () => ({
+          status: 'unconfirmed',
+          rescheduledFrom: '2026-10-01',
+        })),
+      },
+    });
+
+    await service.create('job-1', { occurrenceDate: '2026-10-05' });
+
+    expect(service.workOrderRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ occurrenceDate: '2026-10-05' }),
+      expect.anything(),
+    );
   });
 
   it('throws ValidationError when occurrenceDate does not match a non-recurring job date', async () => {

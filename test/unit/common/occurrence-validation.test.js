@@ -41,4 +41,42 @@ describe('assertValidOccurrenceDate', () => {
       ValidationError,
     );
   });
+
+  describe('with a job occurrence repository (rescheduled visits)', () => {
+    const job = { id: 'job-1', date: '2026-10-01', recurrence: { frequency: 'weekly' } };
+    const repository = (row) => ({ findByJobAndDate: jest.fn(async () => row) });
+
+    it('accepts a date that is a rescheduled visit even though the series does not generate it', async () => {
+      const occurrences = jobService([]);
+      const rows = repository({ occurrenceDate: '2026-10-10', rescheduledFrom: '2026-10-08' });
+
+      await expect(
+        assertValidOccurrenceDate(job, '2026-10-10', occurrences, rows),
+      ).resolves.toBeUndefined();
+      expect(rows.findByJobAndDate).toHaveBeenCalledWith('job-1', '2026-10-10');
+    });
+
+    it('accepts a rescheduled visit for a non-recurring job too', async () => {
+      const oneOff = { id: 'job-1', date: '2026-10-01', recurrence: null };
+      const rows = repository({ occurrenceDate: '2026-10-10', rescheduledFrom: '2026-10-01' });
+
+      await expect(
+        assertValidOccurrenceDate(oneOff, '2026-10-10', jobService([]), rows),
+      ).resolves.toBeUndefined();
+    });
+
+    it('still rejects a date with no row or a row that is not a rescheduled visit', async () => {
+      for (const row of [null, { occurrenceDate: '2026-10-10', rescheduledFrom: null }]) {
+        await expect(
+          assertValidOccurrenceDate(job, '2026-10-10', jobService([]), repository(row)),
+        ).rejects.toThrow(ValidationError);
+      }
+    });
+
+    it('falls back to the series rules for a normal occurrence', async () => {
+      await expect(
+        assertValidOccurrenceDate(job, '2026-10-08', jobService(['2026-10-08']), repository(null)),
+      ).resolves.toBeUndefined();
+    });
+  });
 });

@@ -56,6 +56,9 @@ function buildService(overrides = {}) {
     jobRepository: {
       findById: jest.fn(async () => jobRow()),
     },
+    jobOccurrenceService: {
+      assertAvailableFor: jest.fn(async () => undefined),
+    },
     jobService: {
       getOccurrences: jest.fn(async () => []),
     },
@@ -153,6 +156,52 @@ describe('InvoiceService#generate', () => {
     await expect(
       service.generate('job-1', { occurrenceDate: '2026-10-02', lineItems: LINE_ITEMS }),
     ).rejects.toThrow(ValidationError);
+  });
+
+  it('asks the occurrence service whether the occurrence can be invoiced (completed is allowed)', async () => {
+    const service = buildService();
+
+    await service.generate('job-1', { occurrenceDate: '2026-10-01', lineItems: LINE_ITEMS });
+
+    expect(service.jobOccurrenceService.assertAvailableFor).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'job-1' }),
+      '2026-10-01',
+      { action: 'generate an invoice', allowCompleted: true },
+    );
+  });
+
+  it('creates nothing when the occurrence service refuses the occurrence', async () => {
+    const service = buildService({
+      jobOccurrenceService: {
+        assertAvailableFor: jest.fn(async () => {
+          throw new ValidationError('Cannot generate an invoice for a canceled occurrence');
+        }),
+      },
+    });
+
+    await expect(
+      service.generate('job-1', { occurrenceDate: '2026-10-01', lineItems: LINE_ITEMS }),
+    ).rejects.toThrow(ValidationError);
+    expect(service.invoiceRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts the date a rescheduled visit was moved to', async () => {
+    // The job is a one-off on 2026-10-01; its visit was moved to 2026-10-05.
+    const service = buildService({
+      jobOccurrenceRepository: {
+        findByJobAndDate: jest.fn(async () => ({
+          status: 'unconfirmed',
+          rescheduledFrom: '2026-10-01',
+        })),
+      },
+    });
+
+    await service.generate('job-1', { occurrenceDate: '2026-10-05', lineItems: LINE_ITEMS });
+
+    expect(service.invoiceRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ occurrenceDate: '2026-10-05' }),
+      expect.anything(),
+    );
   });
 
   it('accepts a valid occurrence date for a recurring job', async () => {

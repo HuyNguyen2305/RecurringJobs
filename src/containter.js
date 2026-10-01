@@ -8,6 +8,7 @@ import { ServiceTypeRepository } from '#repositories/service-type.repository.js'
 import { TechnicianRepository } from '#repositories/technician.repository.js';
 import { JobRepository } from '#repositories/job.repository.js';
 import { JobAssigneeRepository } from '#repositories/job-assignee.repository.js';
+import { JobOccurrenceRepository } from '#repositories/job-occurrence.repository.js';
 import { InvoiceRepository } from '#repositories/invoice.repository.js';
 import { EstimateRepository } from '#repositories/estimate.repository.js';
 import { CustomerLineItemRepository } from '#repositories/customer-line-item.repository.js';
@@ -19,6 +20,7 @@ import { LocationService } from '#service/location.service.js';
 import { ServiceTypeService } from '#service/service-type.service.js';
 import { TechnicianService } from '#service/technician.service.js';
 import { JobService } from '#service/job.service.js';
+import { JobOccurrenceService } from '#service/job-occurrence.service.js';
 import { InvoiceService } from '#service/invoice.service.js';
 import { EstimateService } from '#service/estimate.service.js';
 import { WorkOrderService } from '#service/work-order.service.js';
@@ -28,6 +30,7 @@ import { LocationController } from '#controllers/location.controller.js';
 import { ServiceTypeController } from '#controllers/service-type.controller.js';
 import { TechnicianController } from '#controllers/technician.controller.js';
 import { JobController } from '#controllers/job.controller.js';
+import { JobOccurrenceController } from '#controllers/job-occurrence.controller.js';
 import { InvoiceController } from '#controllers/invoice.controller.js';
 import { EstimateController } from '#controllers/estimate.controller.js';
 import { WorkOrderController } from '#controllers/work-order.controller.js';
@@ -42,6 +45,7 @@ export function buildContainer() {
     [REPOSITORY_KEYS.TECHNICIAN]: asClass(TechnicianRepository).singleton(),
     [REPOSITORY_KEYS.JOB]: asClass(JobRepository).singleton(),
     [REPOSITORY_KEYS.JOB_ASSIGNEE]: asClass(JobAssigneeRepository).singleton(),
+    [REPOSITORY_KEYS.JOB_OCCURRENCE]: asClass(JobOccurrenceRepository).singleton(),
     [REPOSITORY_KEYS.INVOICE]: asClass(InvoiceRepository).singleton(),
     [REPOSITORY_KEYS.ESTIMATE]: asClass(EstimateRepository).singleton(),
     [REPOSITORY_KEYS.CUSTOMER_LINE_ITEM]: asClass(CustomerLineItemRepository).singleton(),
@@ -53,6 +57,7 @@ export function buildContainer() {
     [SERVICE_KEYS.SERVICE_TYPE]: asClass(ServiceTypeService).singleton(),
     [SERVICE_KEYS.TECHNICIAN]: asClass(TechnicianService).singleton(),
     [SERVICE_KEYS.JOB]: asClass(JobService).singleton(),
+    [SERVICE_KEYS.JOB_OCCURRENCE]: asClass(JobOccurrenceService).singleton(),
     [SERVICE_KEYS.INVOICE]: asClass(InvoiceService).singleton(),
     [SERVICE_KEYS.ESTIMATE]: asClass(EstimateService).singleton(),
     [SERVICE_KEYS.WORK_ORDER]: asClass(WorkOrderService).singleton(),
@@ -62,6 +67,7 @@ export function buildContainer() {
     [CONTROLLER_KEYS.SERVICE_TYPE]: asClass(ServiceTypeController).singleton(),
     [CONTROLLER_KEYS.TECHNICIAN]: asClass(TechnicianController).singleton(),
     [CONTROLLER_KEYS.JOB]: asClass(JobController).singleton(),
+    [CONTROLLER_KEYS.JOB_OCCURRENCE]: asClass(JobOccurrenceController).singleton(),
     [CONTROLLER_KEYS.INVOICE]: asClass(InvoiceController).singleton(),
     [CONTROLLER_KEYS.ESTIMATE]: asClass(EstimateController).singleton(),
     [CONTROLLER_KEYS.WORK_ORDER]: asClass(WorkOrderController).singleton(),

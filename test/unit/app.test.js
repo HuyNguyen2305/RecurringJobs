@@ -22,6 +22,10 @@ const estimateService = {
   create: jest.fn(async (data) => ({ id: 'estimate-1', ...data })),
   convertToJob: jest.fn(async (id, data) => ({ id: 'job-1', ...data })),
 };
+const jobOccurrenceService = {
+  getSchedule: jest.fn(async () => []),
+  updateStatus: jest.fn(async (jobId, date, body) => ({ jobId, date, ...body })),
+};
 const workOrderService = {
   create: jest.fn(async (jobId, data) => ({ id: 'work-order-1', jobId, ...data })),
   updateStatus: jest.fn(async (id, status) => ({ id, status })),
@@ -40,6 +44,9 @@ jest.unstable_mockModule('#service/invoice.service.js', () => ({
 }));
 jest.unstable_mockModule('#service/estimate.service.js', () => ({
   EstimateService: jest.fn(() => estimateService),
+}));
+jest.unstable_mockModule('#service/job-occurrence.service.js', () => ({
+  JobOccurrenceService: jest.fn(() => jobOccurrenceService),
 }));
 jest.unstable_mockModule('#service/work-order.service.js', () => ({
   WorkOrderService: jest.fn(() => workOrderService),
@@ -225,6 +232,44 @@ describe('buildApp body validation', () => {
 
     expect(response.statusCode).toBe(201);
     expect(invoiceService.generate).toHaveBeenCalledWith(CUSTOMER_ID, body);
+  });
+
+  describe('job status on create', () => {
+    const jobPayload = (status) => ({
+      customerId: CUSTOMER_ID,
+      locationId: LOCATION_ID,
+      serviceTypeId: SERVICE_TYPE_ID,
+      date: '2026-10-01',
+      startTime: '09:00',
+      lengthMinutes: 60,
+      status,
+    });
+
+    it.each(['unconfirmed', 'confirmed', 'in_progress', 'completed', 'canceled'])(
+      'accepts %s',
+      async (status) => {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/jobs',
+          payload: jobPayload(status),
+        });
+
+        expect(response.statusCode).toBe(201);
+      },
+    );
+
+    it('rejects rescheduled, which has no date at job level', async () => {
+      jobService.create.mockClear();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/jobs',
+        payload: jobPayload('rescheduled'),
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(jobService.create).not.toHaveBeenCalled();
+    });
   });
 
   it('strips unknown fields inside nested recurrence and assignees objects', async () => {
@@ -448,6 +493,94 @@ describe('buildApp work order validation', () => {
 
     expect(response.statusCode).toBe(400);
     expect(workOrderService.updateTask).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildApp job occurrence validation', () => {
+  let app;
+
+  beforeAll(async () => {
+    app = await buildTestApp();
+  }, APP_BOOT_TIMEOUT_MS);
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    jobOccurrenceService.getSchedule.mockClear();
+    jobOccurrenceService.updateStatus.mockClear();
+  });
+
+  it('passes from, to and limit to the schedule', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/jobs/${CUSTOMER_ID}/schedule?from=2026-10-01&to=2026-12-31&limit=20`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(jobOccurrenceService.getSchedule).toHaveBeenCalledWith(CUSTOMER_ID, {
+      from: '2026-10-01',
+      to: '2026-12-31',
+      limit: 20,
+    });
+  });
+
+  it('returns 400 for a bad schedule limit', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/jobs/${CUSTOMER_ID}/schedule?limit=0`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(jobOccurrenceService.getSchedule).not.toHaveBeenCalled();
+  });
+
+  it.each(['confirmed', 'completed', 'canceled', 'terminate_service'])(
+    'accepts status %s',
+    async (status) => {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/jobs/${CUSTOMER_ID}/occurrences/2026-10-05/status`,
+        payload: { status },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(jobOccurrenceService.updateStatus).toHaveBeenCalledWith(CUSTOMER_ID, '2026-10-05', {
+        status,
+      });
+    },
+  );
+
+  it('accepts rescheduled with a rescheduledTo date', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/jobs/${CUSTOMER_ID}/occurrences/2026-10-05/status`,
+      payload: { status: 'rescheduled', rescheduledTo: '2026-10-12' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(jobOccurrenceService.updateStatus).toHaveBeenCalledWith(CUSTOMER_ID, '2026-10-05', {
+      status: 'rescheduled',
+      rescheduledTo: '2026-10-12',
+    });
+  });
+
+  it.each([
+    ['an unknown status', '2026-10-05', { status: 'done' }],
+    ['unconfirmed as a target', '2026-10-05', { status: 'unconfirmed' }],
+    ['a missing status', '2026-10-05', {}],
+    ['a bad rescheduledTo', '2026-10-05', { status: 'rescheduled', rescheduledTo: '12/10/2026' }],
+    ['a bad date in the path', '2026-02-30', { status: 'completed' }],
+  ])('returns 400 for %s', async (_name, date, payload) => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/jobs/${CUSTOMER_ID}/occurrences/${date}/status`,
+      payload,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(jobOccurrenceService.updateStatus).not.toHaveBeenCalled();
   });
 });
 

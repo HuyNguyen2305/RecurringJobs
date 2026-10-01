@@ -9,10 +9,19 @@ import { assertValidOccurrenceDate } from '#common/occurrence-validation.js';
 const INVOICE_OCCURRENCE_UNIQUE_INDEX = 'customer_documents_invoice_occurrence_unique';
 
 export class InvoiceService {
-  constructor({ invoiceRepository, customerLineItemRepository, jobRepository, jobService }) {
+  constructor({
+    invoiceRepository,
+    customerLineItemRepository,
+    jobRepository,
+    jobOccurrenceRepository,
+    jobOccurrenceService,
+    jobService,
+  }) {
     this.invoiceRepository = invoiceRepository;
     this.customerLineItemRepository = customerLineItemRepository;
     this.jobRepository = jobRepository;
+    this.jobOccurrenceRepository = jobOccurrenceRepository;
+    this.jobOccurrenceService = jobOccurrenceService;
     this.jobService = jobService;
   }
 
@@ -34,7 +43,17 @@ export class InvoiceService {
       );
     }
 
-    await assertValidOccurrenceDate(job, occurrenceDate, this.jobService);
+    await assertValidOccurrenceDate(
+      job,
+      occurrenceDate,
+      this.jobService,
+      this.jobOccurrenceRepository,
+    );
+
+    await this.jobOccurrenceService.assertAvailableFor(job, occurrenceDate, {
+      action: 'generate an invoice',
+      allowCompleted: true,
+    });
 
     const duplicateMessage = `Job ${jobId} already has an invoice for ${occurrenceDate}`;
     const existing = await this.invoiceRepository.findByJobAndDate(jobId, occurrenceDate);

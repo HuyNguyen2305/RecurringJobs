@@ -1,6 +1,7 @@
 import { NotFoundError, ValidationError, ConflictError } from '#common/error.js';
 import { sequelize } from '#common/database.js';
 import { assertValidOccurrenceDate } from '#common/occurrence-validation.js';
+import { FINAL_OCCURRENCE_STATUSES } from '#constants/job-status.js';
 
 const WORK_ORDER_OCCURRENCE_UNIQUE_INDEX = 'work_orders_job_occurrence_unique';
 
@@ -25,10 +26,19 @@ function summarizeTasks(rows) {
 }
 
 export class WorkOrderService {
-  constructor({ workOrderRepository, workOrderTaskRepository, jobRepository, jobService }) {
+  constructor({
+    workOrderRepository,
+    workOrderTaskRepository,
+    jobRepository,
+    jobOccurrenceRepository,
+    jobOccurrenceService,
+    jobService,
+  }) {
     this.workOrderRepository = workOrderRepository;
     this.workOrderTaskRepository = workOrderTaskRepository;
     this.jobRepository = jobRepository;
+    this.jobOccurrenceRepository = jobOccurrenceRepository;
+    this.jobOccurrenceService = jobOccurrenceService;
     this.jobService = jobService;
   }
 
@@ -38,11 +48,22 @@ export class WorkOrderService {
       throw new NotFoundError(`Job ${jobId} not found`);
     }
 
-    if (job.status === 'canceled') {
-      throw new ValidationError('Cannot create a work order for a canceled job');
+    // A job in a final status accepts no new work orders; the occurrence is checked below.
+    if (FINAL_OCCURRENCE_STATUSES.includes(job.status)) {
+      throw new ValidationError(`Cannot create a work order for a ${job.status} job`);
     }
 
-    await assertValidOccurrenceDate(job, occurrenceDate, this.jobService);
+    await assertValidOccurrenceDate(
+      job,
+      occurrenceDate,
+      this.jobService,
+      this.jobOccurrenceRepository,
+    );
+
+    await this.jobOccurrenceService.assertAvailableFor(job, occurrenceDate, {
+      action: 'create a work order',
+      allowCompleted: false,
+    });
 
     const duplicateMessage = `Job ${jobId} already has a work order for ${occurrenceDate}`;
     const existing = await this.workOrderRepository.findByJobAndDate(jobId, occurrenceDate);

@@ -1,7 +1,7 @@
 import { requestDateSchema } from '#schemas/date.schema.js';
 import { MAX_LENGTH_MINUTES, MAX_RECURRENCE_INTERVAL } from '#constants/validation.js';
+import { JOB_CREATE_STATUSES } from '#constants/job-status.js';
 
-const JOB_STATUSES = ['unconfirmed', 'confirmed', 'in_progress', 'completed', 'canceled'];
 const RECURRENCE_FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const WEEKLY_PERIODS = ['first_third', 'second_fourth', 'every'];
 const MONTHLY_REPEAT_BY = ['day_of_week', 'day_of_month'];
@@ -62,7 +62,7 @@ export const createJobSchema = {
       timeWindowStart: { type: 'string', pattern: timePattern },
       timeWindowEnd: { type: 'string', pattern: timePattern },
       soldByTechnicianId: { type: 'string', format: 'uuid' },
-      status: { type: 'string', enum: JOB_STATUSES },
+      status: { type: 'string', enum: JOB_CREATE_STATUSES },
       isLocked: { type: 'boolean' },
       notifyTechnician: { type: 'boolean' },
       notifyCustomer: { type: 'boolean' },
@@ -95,6 +95,11 @@ export const getJobSchema = {
 };
 
 export const getJobOccurrencesSchema = {
+  summary: "List a job's recurrence dates",
+  description:
+    'The dates the recurrence rule generates, as plain YYYY-MM-DD strings. It knows nothing about ' +
+    "each date's status, dates a visit was rescheduled to, or whether a date is still available: " +
+    'use GET /jobs/{id}/schedule for the calendar view.',
   params: {
     type: 'object',
     required: ['id'],
